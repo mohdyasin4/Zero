@@ -288,3 +288,99 @@ const generateSubject = async (message: string, styleProfile?: WritingStyleMatri
 
   return text.trim();
 };
+
+export const transformEmailTone = activeConnectionProcedure
+  .input(
+    z.object({
+      message: z.string(),
+      tone: z.enum(['formal', 'casual', 'persuasive']),
+      subject: z.string().optional(),
+    }),
+  )
+  .mutation(async ({ ctx, input }) => {
+    const { activeConnection } = ctx;
+    const { message, tone, subject } = input;
+
+    const writingStyleMatrix = await getWritingStyleMatrixForConnectionId({
+      connectionId: activeConnection.id,
+    });
+
+    const transformedMessage = await transformTone(
+      message, 
+      tone, 
+      writingStyleMatrix?.style as WritingStyleMatrix,
+      subject
+    );
+
+    return {
+      transformedMessage,
+    };
+  });
+
+const transformTone = async (
+  message: string, 
+  tone: 'formal' | 'casual' | 'persuasive',
+  styleProfile?: WritingStyleMatrix | null,
+  subject?: string
+) => {
+  const toneDescriptions = {
+    formal: 'professional, polite, and respectful. Use proper grammar, avoid contractions, and maintain a business-appropriate tone',
+    casual: 'friendly, relaxed, and conversational. Use contractions, simple language, and a warm, approachable tone',
+    persuasive: 'compelling, convincing, and influential. Use strong action words, clear benefits, and persuasive language techniques'
+  };
+
+  const parts: string[] = [];
+  
+  parts.push('# Email Tone Transformation Task');
+  
+  if (styleProfile) {
+    parts.push('## User Style Profile');
+    parts.push(`\`\`\`json
+${JSON.stringify(styleProfile, null, 2)}
+\`\`\``);
+  }
+
+  if (subject) {
+    parts.push('## Email Subject');
+    parts.push(escapeXml(subject));
+  }
+
+  parts.push('## Current Email Content');
+  parts.push(escapeXml(message));
+  parts.push('');
+  
+  parts.push(`## Transformation Instructions`);
+  parts.push(`Transform the above email content to have a ${tone} tone that is ${toneDescriptions[tone]}.`);
+  parts.push('');
+  parts.push('## Requirements:');
+  parts.push('- Keep the core message and meaning intact');
+  parts.push('- Only change the tone, style, and word choice');
+  parts.push('- Maintain all important information and details');
+  parts.push('- Return ONLY the transformed email body, no additional text');
+  parts.push(`- Ensure the tone is clearly ${tone} throughout the entire message`);
+  
+  if (styleProfile) {
+    parts.push('- Incorporate the user\'s writing style preferences where appropriate');
+  }
+
+  const { text } = await generateText({
+    model: openai(env.OPENAI_MODEL || 'gpt-4o'),
+    messages: [
+      {
+        role: 'system',
+        content: `You are an expert email tone transformer. Your job is to rewrite emails to match a specific tone while preserving the original meaning and intent. Always maintain the core message while adapting the style, formality level, and word choice to match the requested tone.`,
+      },
+      {
+        role: 'user',
+        content: parts.join('\n\n'),
+      },
+    ],
+    maxTokens: 1500,
+    temperature: 0.4,
+    frequencyPenalty: 0.2,
+    presencePenalty: 0.1,
+    maxRetries: 1,
+  });
+
+  return text.trim();
+};

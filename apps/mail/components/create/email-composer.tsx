@@ -51,6 +51,7 @@ import type { ImageQuality } from '@/lib/image-compression';
 
 const shortcodeRegex = /:([a-zA-Z0-9_+-]+):/g;
 import { TemplateButton } from './template-button';
+import { ToneSelector, type ToneType } from './tone-selector';
 
 type ThreadContent = {
   from: string;
@@ -129,6 +130,7 @@ export function EmailComposer({
   const [aiGeneratedMessage, setAiGeneratedMessage] = useState<string | null>(null);
   const [aiIsLoading, setAiIsLoading] = useState(false);
   const [isGeneratingSubject, setIsGeneratingSubject] = useState(false);
+  const [isToneTransforming, setIsToneTransforming] = useState(false);
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [scheduleAt, setScheduleAt] = useState<string>();
   const [isScheduleValid, setIsScheduleValid] = useState<boolean>(true);
@@ -220,6 +222,9 @@ export function EmailComposer({
   const { mutateAsync: createDraft } = useMutation(trpc.drafts.create.mutationOptions());
   const { mutateAsync: generateEmailSubject } = useMutation(
     trpc.ai.generateEmailSubject.mutationOptions(),
+  );
+  const { mutateAsync: transformEmailTone } = useMutation(
+    trpc.ai.transformEmailTone.mutationOptions(),
   );
 
   const form = useForm<z.infer<typeof schema>>({
@@ -499,6 +504,44 @@ export function EmailComposer({
       toast.error('Failed to generate subject');
     } finally {
       setIsGeneratingSubject(false);
+    }
+  };
+
+  const handleToneTransform = async (tone: ToneType) => {
+    try {
+      setIsToneTransforming(true);
+      const messageText = editor.getText().trim();
+      const values = getValues();
+
+      if (!messageText) {
+        toast.error('Please enter some message content first');
+        return;
+      }
+
+      const { transformedMessage } = await transformEmailTone({ 
+        message: messageText,
+        tone,
+        subject: values.subject
+      });
+
+      // Replace the editor content with the transformed message
+      editor.commands.setContent({
+        type: 'doc',
+        content: transformedMessage.split(/\r?\n/).map((line) => {
+          return {
+            type: 'paragraph',
+            content: line.trim().length === 0 ? [] : [{ type: 'text', text: line }],
+          };
+        }),
+      });
+
+      setHasUnsavedChanges(true);
+      toast.success(`Email transformed to ${tone} tone`);
+    } catch (error) {
+      console.error('Error transforming tone:', error);
+      toast.error('Failed to transform email tone');
+    } finally {
+      setIsToneTransforming(false);
     }
   };
 
@@ -948,6 +991,11 @@ export function EmailComposer({
                 <TooltipContent>Formatting options</TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            <ToneSelector
+              onToneTransform={handleToneTransform}
+              isLoading={isToneTransforming}
+              disabled={isLoading || messageLength < 1}
+            />
           </div>
         </div>
         <div className="flex items-start justify-start gap-2">
