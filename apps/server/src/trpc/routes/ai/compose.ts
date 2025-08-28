@@ -13,6 +13,7 @@ import { env } from '../../../env';
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 import { z } from 'zod';
+import { createLMStudioClient } from '../../../lib/local-ai-client';
 
 type ComposeEmailInput = {
   prompt: string;
@@ -85,29 +86,55 @@ export async function composeEmail(input: ComposeEmailInput) {
           },
         ];
 
-  const { text } = await generateText({
-    model: openai(env.OPENAI_MINI_MODEL || 'gpt-4o-mini'),
-    messages: [
+  let text: string;
+  
+  // Use local AI if enabled, otherwise fall back to OpenAI
+  if (env.LOCAL_AI_ENABLED === 'true') {
+    const localClient = createLMStudioClient({
+      baseURL: env.LOCAL_AI_BASE_URL,
+      model: env.LOCAL_AI_MODEL,
+    });
+    
+    // Convert messages to the format expected by local AI
+    const localMessages = [
       {
-        role: 'system',
+        role: 'system' as const,
         content: systemPrompt,
       },
       ...messages,
       {
-        role: 'user',
+        role: 'user' as const,
         content: userPrompt,
       },
-    ],
-    maxSteps: 10,
-    maxTokens: 2_000,
-    temperature: 0.35,
-    frequencyPenalty: 0.2,
-    presencePenalty: 0.1,
-    maxRetries: 1,
-    tools: {
-      webSearch: webSearch(),
-    },
-  });
+    ];
+    
+    text = await localClient.generateChatCompletion(localMessages);
+  } else {
+    const result = await generateText({
+      model: openai(env.OPENAI_MINI_MODEL || 'gpt-4o-mini'),
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt,
+        },
+        ...messages,
+        {
+          role: 'user',
+          content: userPrompt,
+        },
+      ],
+      maxSteps: 10,
+      maxTokens: 2_000,
+      temperature: 0.35,
+      frequencyPenalty: 0.2,
+      presencePenalty: 0.1,
+      maxRetries: 1,
+      tools: {
+        webSearch: webSearch(),
+      },
+    });
+    text = result.text;
+  }
 
   return text;
 }
@@ -266,25 +293,47 @@ const generateSubject = async (message: string, styleProfile?: WritingStyleMatri
     'Generate a concise, clear subject line that summarizes the main point of the email. The subject should be professional and under 100 characters.',
   );
 
-  const { text } = await generateText({
-    model: openai(env.OPENAI_MODEL || 'gpt-4o'),
-    messages: [
+  let text: string;
+  
+  // Use local AI if enabled, otherwise fall back to OpenAI
+  if (env.LOCAL_AI_ENABLED === 'true') {
+    const localClient = createLMStudioClient({
+      baseURL: env.LOCAL_AI_BASE_URL,
+      model: env.LOCAL_AI_MODEL,
+    });
+    
+    text = await localClient.generateChatCompletion([
       {
         role: 'system',
-        content:
-          'You are an email subject line generator. Generate a concise, clear subject line that summarizes the main point of the email. The subject should be professional and under 100 characters.',
+        content: 'You are an email subject line generator. Generate a concise, clear subject line that summarizes the main point of the email. The subject should be professional and under 100 characters.',
       },
       {
         role: 'user',
         content: parts.join('\n\n'),
       },
-    ],
-    maxTokens: 50,
-    temperature: 0.3,
-    frequencyPenalty: 0.1,
-    presencePenalty: 0.1,
-    maxRetries: 1,
-  });
+    ]);
+  } else {
+    const result = await generateText({
+      model: openai(env.OPENAI_MODEL || 'gpt-4o'),
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are an email subject line generator. Generate a concise, clear subject line that summarizes the main point of the email. The subject should be professional and under 100 characters.',
+        },
+        {
+          role: 'user',
+          content: parts.join('\n\n'),
+        },
+      ],
+      maxTokens: 50,
+      temperature: 0.3,
+      frequencyPenalty: 0.1,
+      presencePenalty: 0.1,
+      maxRetries: 1,
+    });
+    text = result.text;
+  }
 
   return text.trim();
 };
@@ -363,9 +412,14 @@ ${JSON.stringify(styleProfile, null, 2)}
     parts.push('- Incorporate the user\'s writing style preferences where appropriate');
   }
 
-  const { text } = await generateText({
-    model: openai(env.OPENAI_MODEL || 'gpt-4o'),
-    messages: [
+  // Use local AI if enabled, otherwise fall back to OpenAI
+  if (env.LOCAL_AI_ENABLED === 'true') {
+    const localClient = createLMStudioClient({
+      baseURL: env.LOCAL_AI_BASE_URL,
+      model: env.LOCAL_AI_MODEL,
+    });
+    
+    const text = await localClient.generateChatCompletion([
       {
         role: 'system',
         content: `You are an expert email tone transformer. Your job is to rewrite emails to match a specific tone while preserving the original meaning and intent. Always maintain the core message while adapting the style, formality level, and word choice to match the requested tone.`,
@@ -374,13 +428,27 @@ ${JSON.stringify(styleProfile, null, 2)}
         role: 'user',
         content: parts.join('\n\n'),
       },
-    ],
-    maxTokens: 1500,
-    temperature: 0.4,
-    frequencyPenalty: 0.2,
-    presencePenalty: 0.1,
-    maxRetries: 1,
-  });
-
-  return text.trim();
+    ]);
+    return text.trim();
+  } else {
+    const { text } = await generateText({
+      model: openai(env.OPENAI_API_KEY ? env.OPENAI_MODEL || 'gpt-4o' : 'gpt-4o'),
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert email tone transformer. Your job is to rewrite emails to match a specific tone while preserving the original meaning and intent. Always maintain the core message while adapting the style, formality level, and word choice to match the requested tone.`,
+        },
+        {
+          role: 'user',
+          content: parts.join('\n\n'),
+        },
+      ],
+      maxTokens: 1500,
+      temperature: 0.4,
+      frequencyPenalty: 0.2,
+      presencePenalty: 0.1,
+      maxRetries: 1,
+    });
+    return text.trim();
+  }
 };

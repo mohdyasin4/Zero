@@ -65,6 +65,9 @@ export type ZeroEnv = {
   REDIS_URL: string;
   REDIS_TOKEN: string;
   OPENAI_API_KEY: string;
+  LOCAL_AI_ENABLED: string;
+  LOCAL_AI_BASE_URL: string;
+  LOCAL_AI_MODEL: string;
   BRAIN_URL: string;
   COMPOSIO_API_KEY: string;
   GROQ_API_KEY: string;

@@ -182,6 +182,12 @@
         "DD_API_KEY": "",
         "DD_APP_KEY": "",
         "DD_SITE": "datadoghq.com",
+        "OPENAI_API_KEY": "your-openai-api-key-here",
+        "OPENAI_MODEL": "gpt-4o",
+        "OPENAI_MINI_MODEL": "gpt-4o-mini",
+        "LOCAL_AI_ENABLED": "true",
+        "LOCAL_AI_BASE_URL": "http://localhost:1234",
+        "LOCAL_AI_MODEL": "qwen/qwen2.5-coder-14b",
       },
       "kv_namespaces": [
         {
